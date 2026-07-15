@@ -1,0 +1,133 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  deploy-functions:
+    runs-on: ubuntu-latest
+    outputs:
+      manage_reminders_url: ${{ steps.manage-reminders-url.outputs.url }}
+    env:
+      YC_CLOUD_ID: ${{ secrets.YC_CLOUD_ID }}
+      YC_FOLDER_ID: ${{ secrets.YC_FOLDER_ID }}
+      YC_ACCESS_KEY_ID: ${{ secrets.YC_ACCESS_KEY_ID }}
+      YC_SECRET_ACCESS_KEY: ${{ secrets.YC_SECRET_ACCESS_KEY }}
+      YC_BUCKET_NAME: ${{ secrets.YC_BUCKET_NAME }}
+      VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
+      VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Yandex Cloud CLI
+        run: |
+          curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash -s -- -i "$HOME/yandex-cloud" -n
+          echo "$HOME/yandex-cloud/bin" >> "$GITHUB_PATH"
+
+      - name: Authenticate yc CLI
+        env:
+          YC_SA_KEY: ${{ secrets.YC_SA_KEY }}
+        run: |
+          printf '%s' "$YC_SA_KEY" > "$RUNNER_TEMP/sa-key.json"
+          yc config profile create ci
+          yc config set service-account-key "$RUNNER_TEMP/sa-key.json"
+          yc config set cloud-id "$YC_CLOUD_ID"
+          yc config set folder-id "$YC_FOLDER_ID"
+
+      - name: Install function dependencies
+        run: |
+          npm install --omit=dev --prefix functions/manage-reminders
+          npm install --omit=dev --prefix functions/send-reminders
+
+      - name: Ensure functions exist
+        run: |
+          yc serverless function get --name manage-reminders >/dev/null 2>&1 || \
+            yc serverless function create --name manage-reminders
+          yc serverless function get --name send-reminders >/dev/null 2>&1 || \
+            yc serverless function create --name send-reminders
+
+      - name: Deploy manage-reminders
+        run: |
+          yc serverless function version create \
+            --function-name manage-reminders \
+            --runtime nodejs20 \
+            --entrypoint index.handler \
+            --memory 128m \
+            --execution-timeout 10s \
+            --source-path functions/manage-reminders \
+            --environment YC_ACCESS_KEY_ID="$YC_ACCESS_KEY_ID",YC_SECRET_ACCESS_KEY="$YC_SECRET_ACCESS_KEY",BUCKET_NAME="$YC_BUCKET_NAME",ALLOWED_ORIGIN="https://ilyamc3-hash.github.io"
+
+      - name: Allow unauthenticated invoke for manage-reminders
+        run: yc serverless function allow-unauthenticated-invoke --name manage-reminders
+
+      - name: Resolve manage-reminders invoke URL
+        id: manage-reminders-url
+        run: |
+          FUNC_ID=$(yc serverless function get --name manage-reminders --format json | jq -r '.id')
+          echo "url=https://functions.yandexcloud.net/$FUNC_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy send-reminders
+        run: |
+          yc serverless function version create \
+            --function-name send-reminders \
+            --runtime nodejs20 \
+            --entrypoint index.handler \
+            --memory 128m \
+            --execution-timeout 30s \
+            --source-path functions/send-reminders \
+            --environment YC_ACCESS_KEY_ID="$YC_ACCESS_KEY_ID",YC_SECRET_ACCESS_KEY="$YC_SECRET_ACCESS_KEY",BUCKET_NAME="$YC_BUCKET_NAME",VAPID_PUBLIC_KEY="$VAPID_PUBLIC_KEY",VAPID_PRIVATE_KEY="$VAPID_PRIVATE_KEY",VAPID_SUBJECT="mailto:ilyamc3@gmail.com"
+
+      - name: Grant the deploy service account invoker rights
+        run: |
+          SA_ID=$(jq -r '.service_account_id' "$RUNNER_TEMP/sa-key.json")
+          yc resource-manager folder add-access-binding \
+            --id "$YC_FOLDER_ID" \
+            --role serverless.functions.invoker \
+            --subject "serviceAccount:$SA_ID"
+          echo "SA_ID=$SA_ID" >> "$GITHUB_ENV"
+
+      - name: Ensure timer trigger for send-reminders
+        run: |
+          yc serverless trigger get --name send-reminders-timer >/dev/null 2>&1 || \
+            yc serverless trigger create timer \
+              --name send-reminders-timer \
+              --cron-expression "* * * * ? *" \
+              --invoke-function-name send-reminders \
+              --invoke-function-service-account-id "$SA_ID"
+
+      - name: Clean up service account key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/sa-key.json"
+
+  deploy-pages:
+    needs: deploy-functions
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run build
+        env:
+          VITE_VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
+          VITE_REMINDERS_API_URL: ${{ needs.deploy-functions.outputs.manage_reminders_url }}
+
+      - uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist

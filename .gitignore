@@ -12,6 +12,12 @@ dist
 dist-ssr
 *.local
 
+# Local secrets - never commit VAPID keys or YC credentials
+.env
+.env.*
+!.env.example
+functions/*/node_modules
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

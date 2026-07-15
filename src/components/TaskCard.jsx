@@ -1,8 +1,9 @@
 import { useRef, useState } from "react";
-import { AlertTriangle, Check, CheckCircle2, Circle, Clock, Trash2, X } from "lucide-react";
+import { AlertTriangle, Bell, Check, CheckCircle2, Circle, Clock, Trash2, X } from "lucide-react";
 import { styles } from "../styles";
 import { PRIORITY, CONTEXT_ICONS, DEFAULT_CONTEXT_ICON } from "../constants";
-import { deadlineState, formatDate, formatDuration } from "../utils";
+import { deadlineState, formatDate, formatDuration, formatReminder } from "../utils";
+import ReminderPicker from "./ReminderPicker";
 
 export default function TaskCard({
   task,
@@ -13,11 +14,13 @@ export default function TaskCard({
   onToggleDone,
   onRemove,
   onSaveText,
+  onSetReminder,
 }) {
   const [swipeX, setSwipeX] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(task.text);
+  const [showReminderEditor, setShowReminderEditor] = useState(false);
   const dragStart = useRef(0);
 
   const dState = deadlineState(task.deadline);
@@ -128,7 +131,27 @@ export default function TaskCard({
                 {formatDate(task.deadline)}
               </span>
             )}
+            {!task.done && (
+              <button
+                type="button"
+                onClick={() => setShowReminderEditor((v) => !v)}
+                style={{ ...styles.bellBtn, ...(task.reminderAt ? styles.bellBtnActive : {}) }}
+              >
+                <Bell size={11} strokeWidth={2} />
+                {task.reminderAt ? formatReminder(task.reminderAt) : "Напоминание"}
+              </button>
+            )}
           </div>
+
+          {showReminderEditor && (
+            <div style={styles.reminderPopover} onClick={(e) => e.stopPropagation()}>
+              <ReminderPicker
+                valueISO={task.reminderAt}
+                deadline={task.deadline}
+                onChange={(reminderAt) => onSetReminder(task.id, reminderAt)}
+              />
+            </div>
+          )}
         </div>
 
         <button onClick={() => onRemove(task.id)} style={styles.removeBtn} aria-label="Удалить">

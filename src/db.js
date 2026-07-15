@@ -102,6 +102,7 @@ export async function addTask(task) {
     priority: task.priority ?? "med",
     deadline: task.deadline ?? null,
     durationMinutes: task.durationMinutes ?? null,
+    reminderAt: task.reminderAt ?? null,
     done: false,
     createdAt: nowISO(),
     updatedAt: nowISO(),

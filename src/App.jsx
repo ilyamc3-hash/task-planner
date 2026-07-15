@@ -17,6 +17,7 @@ import TaskForm from "./components/TaskForm";
 import { fontImport, styles } from "./styles";
 import { ALL_CONTEXT, CONTEXT_ICONS, SECTION_LABELS, SECTION_ORDER, TODAY_COLOR, OVERDUE_COLOR } from "./constants";
 import { buildSections, dayLabel, deadlineState } from "./utils";
+import { deleteReminder, upsertReminder } from "./push";
 
 const emptyDraft = () => ({
   text: "",
@@ -25,6 +26,7 @@ const emptyDraft = () => ({
   priority: "med",
   deadline: "",
   durationMinutes: null,
+  reminderAt: null,
 });
 
 export default function App() {
@@ -134,17 +136,43 @@ export default function App() {
   const toggleDone = async (id) => {
     setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, done: !t.done } : t)));
     const target = tasks.find((t) => t.id === id);
-    if (target) await updateTask(id, { done: !target.done });
+    if (!target) return;
+    await updateTask(id, { done: !target.done });
+    if (!target.done && target.reminderAt) {
+      deleteReminder(id).catch(() => {});
+    }
   };
 
   const removeTask = async (id) => {
+    const target = tasks.find((t) => t.id === id);
     setTasks((prev) => prev.filter((t) => t.id !== id));
     await deleteTask(id);
+    if (target?.reminderAt) {
+      deleteReminder(id).catch(() => {});
+    }
   };
 
   const saveText = async (id, text) => {
     setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, text } : t)));
     await updateTask(id, { text });
+    const target = tasks.find((t) => t.id === id);
+    if (target?.reminderAt) {
+      upsertReminder({ id, text, remindAt: target.reminderAt }).catch((err) => showToast(err.message));
+    }
+  };
+
+  const setReminder = async (id, reminderAt) => {
+    setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, reminderAt } : t)));
+    const updated = await updateTask(id, { reminderAt });
+    try {
+      if (reminderAt) {
+        await upsertReminder({ id, text: updated.text, remindAt: reminderAt });
+      } else {
+        await deleteReminder(id);
+      }
+    } catch (err) {
+      showToast(err.message);
+    }
   };
 
   const handleAddTask = async () => {
@@ -157,10 +185,18 @@ export default function App() {
       priority: draft.priority,
       deadline: draft.deadline || null,
       durationMinutes: draft.durationMinutes || null,
+      reminderAt: draft.reminderAt || null,
     });
     setTasks((prev) => [...prev, record]);
     setDraft({ ...emptyDraft(), contextId: contexts[0]?.id || "" });
     setShowForm(false);
+    if (record.reminderAt) {
+      try {
+        await upsertReminder({ id: record.id, text: record.text, remindAt: record.reminderAt });
+      } catch (err) {
+        showToast(err.message);
+      }
+    }
   };
 
   const handleExport = async () => {
@@ -336,6 +372,7 @@ export default function App() {
                     onToggleDone={toggleDone}
                     onRemove={removeTask}
                     onSaveText={saveText}
+                    onSetReminder={setReminder}
                   />
                 );
               })}

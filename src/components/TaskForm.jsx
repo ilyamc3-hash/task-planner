@@ -2,6 +2,7 @@ import { Clock } from "lucide-react";
 import { styles } from "../styles";
 import { DURATIONS, PRIORITY, QUICK_DATES } from "../constants";
 import { shiftDate } from "../utils";
+import ReminderPicker from "./ReminderPicker";
 
 export default function TaskForm({ draft, setDraft, contexts, projectsForContext, showContextSelect, onCancel, onSave }) {
   return (
@@ -86,6 +87,12 @@ export default function TaskForm({ draft, setDraft, contexts, projectsForContext
           </button>
         ))}
       </div>
+
+      <ReminderPicker
+        valueISO={draft.reminderAt}
+        deadline={draft.deadline}
+        onChange={(reminderAt) => setDraft({ ...draft, reminderAt })}
+      />
 
       <div style={styles.formActions}>
         <button style={styles.cancelBtn} onClick={onCancel}>
