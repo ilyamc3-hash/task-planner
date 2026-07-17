@@ -66,9 +66,6 @@ jobs:
             --source-path functions/manage-reminders \
             --environment YC_ACCESS_KEY_ID="$YC_ACCESS_KEY_ID",YC_SECRET_ACCESS_KEY="$YC_SECRET_ACCESS_KEY",BUCKET_NAME="$YC_BUCKET_NAME",ALLOWED_ORIGIN="https://ilyamc3-hash.github.io"
 
-      - name: Allow unauthenticated invoke for manage-reminders
-        run: yc serverless function allow-unauthenticated-invoke --name manage-reminders
-
       - name: Resolve manage-reminders invoke URL
         id: manage-reminders-url
         run: |
@@ -86,13 +83,9 @@ jobs:
             --source-path functions/send-reminders \
             --environment YC_ACCESS_KEY_ID="$YC_ACCESS_KEY_ID",YC_SECRET_ACCESS_KEY="$YC_SECRET_ACCESS_KEY",BUCKET_NAME="$YC_BUCKET_NAME",VAPID_PUBLIC_KEY="$VAPID_PUBLIC_KEY",VAPID_PRIVATE_KEY="$VAPID_PRIVATE_KEY",VAPID_SUBJECT="mailto:ilyamc3@gmail.com"
 
-      - name: Grant the deploy service account invoker rights
+      - name: Resolve deploy service account ID
         run: |
           SA_ID=$(jq -r '.service_account_id' "$RUNNER_TEMP/sa-key.json")
-          yc resource-manager folder add-access-binding \
-            --id "$YC_FOLDER_ID" \
-            --role serverless.functions.invoker \
-            --subject "serviceAccount:$SA_ID"
           echo "SA_ID=$SA_ID" >> "$GITHUB_ENV"
 
       - name: Ensure timer trigger for send-reminders
