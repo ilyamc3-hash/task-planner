@@ -83,20 +83,6 @@ jobs:
             --source-path functions/send-reminders \
             --environment YC_ACCESS_KEY_ID="$YC_ACCESS_KEY_ID",YC_SECRET_ACCESS_KEY="$YC_SECRET_ACCESS_KEY",BUCKET_NAME="$YC_BUCKET_NAME",VAPID_PUBLIC_KEY="$VAPID_PUBLIC_KEY",VAPID_PRIVATE_KEY="$VAPID_PRIVATE_KEY",VAPID_SUBJECT="mailto:ilyamc3@gmail.com"
 
-      - name: Resolve deploy service account ID
-        run: |
-          SA_ID=$(jq -r '.service_account_id' "$RUNNER_TEMP/sa-key.json")
-          echo "SA_ID=$SA_ID" >> "$GITHUB_ENV"
-
-      - name: Ensure timer trigger for send-reminders
-        run: |
-          yc serverless trigger get --name send-reminders-timer >/dev/null 2>&1 || \
-            yc serverless trigger create timer \
-              --name send-reminders-timer \
-              --cron-expression "* * * * ? *" \
-              --invoke-function-name send-reminders \
-              --invoke-function-service-account-id "$SA_ID"
-
       - name: Clean up service account key
         if: always()
         run: rm -f "$RUNNER_TEMP/sa-key.json"
