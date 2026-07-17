@@ -59,7 +59,7 @@ jobs:
         run: |
           yc serverless function version create \
             --function-name manage-reminders \
-            --runtime nodejs20 \
+            --runtime nodejs22 \
             --entrypoint index.handler \
             --memory 128m \
             --execution-timeout 10s \
@@ -79,7 +79,7 @@ jobs:
         run: |
           yc serverless function version create \
             --function-name send-reminders \
-            --runtime nodejs20 \
+            --runtime nodejs22 \
             --entrypoint index.handler \
             --memory 128m \
             --execution-timeout 30s \
